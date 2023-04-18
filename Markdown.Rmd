@@ -1,0 +1,774 @@
+---
+title: "Regression Project"
+author: "Ali Ayoub, Hadi Majed & Samer Al-Zoer"
+date: "April 2023"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+always_allow_html: yes
+---
+
+
+# **Student Performance Analysis**
+
+
+
+To better understand what factors may affect the academic performance of students,  this page gives multiple types of tools to analyse the correlation  between some features from different angles, and then explains it  from several aspects, to be able to predict student performance, and fill the gaps in academic performance.
+
+## *Data Preparaion*
+
+In this section we can learn more about the structure, types and values of our variables. We will understand some basic statistics of this case, and examine the correlation between some major variables.
+
+
+#### Import data from csv file
+
+```{r}
+data <- read.csv('student-mat.csv', sep=";", header=TRUE)
+dim(data)
+sum(is.na(data))
+head(data)
+```
+
+
+#### Data Structure:
+
+
+```{r}
+str(data)
+```
+#### Data Summary:
+
+```{r}
+summary(data)
+```
+#### Data Visualization:
+
+```{r eval=FALSE}
+data['Grade'] <- rowMeans(data[c('G2', 'G3')])
+
+library(ggplot2)
+ggplot(data=data, aes(x=Grade)) +
+  geom_histogram(fill="steelblue", color="black", bins = 30) +
+  ggtitle("Histogram of Grades")
+```
+
+
+```{r echo=FALSE}
+data['Grade'] <- rowMeans(data[c('G2', 'G3')])
+library(ggplot2)
+ggplot(data=data, aes(x=absences, y=Grade)) + 
+  geom_point()
+```
+
+```{r echo=FALSE}
+data['Grade'] <- rowMeans(data[c('G2', 'G3')])
+library(ggplot2)
+ggplot(data=data, aes(x=sex, y=Grade)) + 
+  geom_boxplot(fill="steelblue")
+
+```
+
+#### More Visualization: 
+
+```{r echo=FALSE}
+
+library(ggplot2)
+
+ggplot(data = data) + geom_bar(mapping = aes(x = age))
+
+```
+
+```{r echo=FALSE}
+data['Grade'] <- rowMeans(data[c('G2', 'G3')]) 
+smaller <- subset(data, Grade < 10)
+
+```
+
+```{r echo=FALSE}
+ggplot(data = smaller, mapping = aes(x = Grade, colour = sex)) + geom_freqpoly(binwidth = 0.1)
+
+```
+
+```{r echo=FALSE}
+ggplot(data = data) + 
+  geom_count(mapping = aes(x = Fjob, y = Mjob))
+
+```
+
+```{r echo=FALSE}
+ggplot(data = data) + 
+  geom_boxplot(mapping = aes(x = reorder(school, Grade, FUN = median), y = Grade)) + coord_flip()
+
+```
+
+```{r echo=FALSE}
+ggplot(data = data) + 
+  geom_point(mapping = aes(x = absences, y = Grade), alpha = 1 / 5)
+
+```
+```{r echo=FALSE}
+data['Grade'] <- rowMeans(data[c('G2', 'G3')]) 
+smaller <- subset(data, Grade < 10)
+ggplot(data = smaller) + 
+  geom_bin2d(mapping = aes(x = absences, y = Grade))
+
+```
+
+```{r echo=FALSE}
+library(hexbin)
+ggplot(data = smaller) + 
+  geom_hex(mapping = aes(x = absences, y = Grade))
+
+```
+
+
+#### Choosing Numerical Variables:
+
+```{r echo=FALSE}
+
+# Install and load reshape2 package
+library(reshape2)
+
+# numerical features
+
+data['Grade'] <- rowMeans(data[c('G2', 'G3')])
+
+num_data = data[c('age', 'Medu', 'Fedu', 'failures', 'studytime','absences', 'Grade')]
+
+# creating correlation matrix
+corr_mat <- round(cor(num_data),2)
+
+# reduce the size of correlation matrix
+melted_corr_mat <- melt(corr_mat)
+ head(melted_corr_mat)
+
+# plotting the correlation heatmap
+library(ggplot2)
+ggplot(data = melted_corr_mat, aes(x=Var1, y=Var2,
+                                   fill=value)) +
+  geom_tile() +
+  geom_text(aes(Var2, Var1, label = value),
+            color = "black", size = 4)
+```
+
+```{r echo=FALSE}
+# Load and install heatmaply package
+library(plotly)
+library(heatmaply)
+
+# numerical features
+num_data = data[c('age', 'Medu', 'Fedu', 'failures', 'studytime', 'absences', 'Grade')]
+
+# creating correlation matrix
+corr_mat <- round(cor(num_data),2)
+
+# plotting corr heatmap
+heatmaply_cor(x = corr_mat, xlab = "Features",
+              ylab = "Features", k_col = 2, k_row = 2)
+```
+
+
+## *Explatory Data Analysis (EDA)*
+
+In this section, we will explore more the data set. Furthermore, we will preprocess data and clean all anomalies to eventually be ready to be fed to the model.
+
+### Outliers 
+
+
+#### Visual Detection 
+```{r echo=FALSE}
+
+# Create box plot for each continuous feature
+cont_data <- data[c('age', 'absences', 'G1', 'Grade')]
+par(mfrow=c(1, ncol(cont_data)))
+for (i in 1:ncol(cont_data)) {
+  boxplot(cont_data[,i], main = names(cont_data[i]))
+}
+
+```
+
+```{r echo=FALSE}
+# Create box plot for feature with most outliers
+out <- boxplot.stats(cont_data$absences)$out
+out_ind <- which(cont_data$absences %in% c(out))
+boxplot(cont_data$absences,
+        ylab = "Absences",
+        main = "Boxplot of Absences",
+        boxwex=0.3,
+        outwex=0.4,
+        ylim = c(0, 60)
+)
+mtext(paste("Outliers: ", paste(out, collapse = ", ")))
+
+```
+
+#### Z-score Detection
+
+```{r}
+
+# use Z-score to detect outliers
+# Calculate z-scores for each feature
+z_scores <- apply(cont_data, 2, function(x) abs(scale(x)))
+
+# Identify potential outliers
+outliers_Zscore <- which(z_scores > 3, arr.ind = TRUE)
+
+# Print results
+cat("Number of potential outliers:", nrow(outliers_Zscore), "\n \n")
+cat("List of Z-score Detected Outliers Rows: ", outliers_Zscore[1:8])
+
+
+```
+
+#### LOF Detection
+
+```{r}
+
+library(Rcpp)
+library(dbscan)
+
+
+# detect outliers with Local Outliers Factor (LOF)
+# Calculate LOF for each observation
+data['Grade'] <- rowMeans(data[c('G2', 'G3')])
+cont_data <- data[c('age', 'absences', 'G1', 'Grade')]
+lof <- lof(cont_data)
+
+# Identify potential outliers
+outliers_lof <- which(lof > 1.5)
+
+# Print results
+cat("Number of potential outliers:", length(outliers_lof), "\n \n")
+cat("List of Detected LOF Outliers Rows: ", outliers_lof)
+
+```
+
+#### Remove Outliers
+
+```{r}
+
+# Remove outliers 
+outliers <- union(outliers_lof, outliers_Zscore)
+data <- data[-c(outliers),]
+cat("New Dimensions of Data :", dim(data), "\n \n")
+cat("Total Outliers Removed :", length(outliers))
+
+
+```
+### Skewness 
+
+```{r}
+
+library(e1071)
+# detect skewed variables
+skewness <- apply(cont_data, 2, skewness)
+skewness <- skewness[abs(skewness) > 0.5]
+cat("Most Skewed: ", skewness, "\n \n")
+
+library(moments)
+# Calculate skewness with moments library skewness 
+skew <- moments::skewness(cont_data)
+
+# Print result
+cat("Skewness Score:\n \n") 
+print(skew)
+
+```
+
+#### Visualize Skewness of Continuous Variables
+
+
+```{r}
+
+#Histogram of Absences Variable:
+hist(cont_data$absences)
+
+```
+
+```{r}
+
+#Histogram of Age Variable:
+hist(cont_data$age)
+
+```
+
+```{r}
+#Histogram of Grade Variable:
+hist(cont_data$Grade)
+
+```
+
+#### Visualize Normality using QQ-Plot
+
+```{r echo=FALSE}
+# Create a Q-Q plot
+data['Grade'] <- rowMeans(data[c('G2', 'G3')])
+cont_data <- data[c('age', 'absences', 'G1', 'Grade')]
+par(mfrow=c(1, ncol(cont_data)))
+for (i in 1:ncol(cont_data)) {
+  qqnorm(cont_data[,i], main = names(cont_data[i]))
+  qqline(cont_data[,i])
+}
+```
+#### Test Normality Using Shapiro-Wilk Test
+
+```{r}
+
+# Loop over each column in the continuous data and apply the Shapiro-Wilk test
+for (col in colnames(cont_data)) {
+  p_value <- shapiro.test(cont_data[[col]])$p.value
+  if (p_value < 0.05) {
+    cat(paste0("The ", col, " variable is not normally distributed (p = ", round(p_value, 3), ")\n"))
+  } else {
+    cat(paste0("The ", col, " variable is normally distributed (p = ", round(p_value, 3), ")\n"))
+  }
+}
+
+```
+
+#### Adjust Normality for Skewed Features
+
+```{r}
+
+# adjust non-normal variables using log transformation
+x <- data[, 'absences']
+x_log <- log(data[, 'absences'])
+
+```
+
+
+```{r echo=FALSE}
+
+# Plot the original data and the transformed data
+par(mfrow = c(1, 2))
+hist(x, breaks = 10, xlab='Original absences', main = "Original Data")
+hist(x_log, breaks = 10, xlab='Transformed absences', main = "Transformed Data")
+
+```
+
+## Data Preprocessing 
+
+### Encoding Categorical Values 
+
+```{r eval=FALSE}
+install.packages('caret')
+library(caret)
+```
+
+#### One-Hot-Encoding Non Binary Variables
+
+```{r}
+library(caret)
+
+# Use dummyVars() to perform one-hot encoding on the categorical variables
+
+data['Grade'] <- rowMeans(data[c('G2', 'G3')])
+data_encoded <- predict(dummyVars(~., data[c('Mjob','Fjob','reason','guardian')]), newdata = data)
+
+# Combine the encoded variables with the original data frame
+data_combined <- cbind(data, data_encoded)
+
+# Remove the original categorical variables
+data <- data_combined[!names(data_combined) %in% c('Mjob','Fjob','reason','guardian')]
+head(data)
+
+```
+
+#### Label Encoding Binary Data
+
+```{r}
+
+# Identify the categorical variables
+categorical_vars <- sapply(data, function(x) class(x) %in% c("character", "factor"))
+print(categorical_vars[categorical_vars == TRUE])
+
+# convert categorical variables to factors and then to numeric codes
+data[categorical_vars] <- lapply(data[categorical_vars], factor)
+data[categorical_vars] <- lapply(data[categorical_vars], as.numeric)
+
+# display the resulting dataset
+head(data)
+
+```
+
+### Further Analysis
+
+#### Clustering Analysis
+
+```{r}
+
+# Run k-means clustering
+clusters <- kmeans(data, centers = 2)
+
+library(Rtsne)
+# Use the t-SNE algorithm to reduce the iris dataset to two dimensions
+tsne_result <- Rtsne(data, dims = 2, perplexity = 30, verbose = TRUE)
+
+# Plot the t-SNE result
+plot(tsne_result$Y, col = clusters$cluster, pch = 16, xlab="TSNE 1", ylab="TSNE 2")
+
+```
+
+
+## *ANOVA One-Way*
+
+```{r}
+
+#install.packages(c("ggpubr", "broom", "AICcmodavg"))
+
+# visualize if variables are independant
+library(ggplot2)
+ggplot(data, aes(x = data$Medu, y = data$Grade)) + 
+  geom_point() + 
+  geom_line() + 
+  labs(title = "Scatterplot with lines connecting observations", x = "Mother Education", y = "Grades") +
+  guides(col = FALSE)
+
+
+```
+
+
+```{r}
+# test independance
+
+library(lmtest)
+dwtest(lm(data$Grade ~ data$Medu, data = data))
+
+```
+```{r}
+
+library(ggplot2)
+ggplot(data, aes(x = data$Medu, y = data$Grade)) + geom_boxplot()
+
+```
+
+```{r}
+# check homogeneity of variance
+model <- lm(data$Medu ~ data$Grade, data = data)
+plot(model, which = 1)
+
+
+```
+
+
+```{r}
+
+one.way.Medu <- aov(data$Grade ~ factor(data$Medu), data = data)
+
+summary(one.way.Medu)
+
+# perform Tukey's HSD test
+posthoc <- TukeyHSD(one.way.Medu)
+
+# print the results
+print(posthoc)
+
+
+# Set the significance level (alpha) and degrees of freedom
+alpha <- 0.05
+df1 <- 4   # degrees of freedom for the numerator
+df2 <- 373  # degrees of freedom for the denominator
+
+# Calculate the critical value
+crit_val <- qf(1-alpha, df1, df2)
+
+# Print the critical value
+crit_val
+
+
+
+```
+
+
+Based on this one-way anova test, p-value is too small hence considered significant to say that there is a difference in mean between some group pairs. Furthermore, F > crit_val which demonstrate more the result. 
+
+In order to examine which group pairs are not identical, we apply post-hoc test.
+It return 4-1 and 4-0. Hence, the model was able to catch an important relation between the mother education level and student performance.
+
+
+
+```{r}
+
+one.way.abs <- aov(data$Grade ~ factor(data$absences), data = data)
+
+summary(one.way.abs)
+
+```
+
+Absences can also be, at a given degree, a factor that affect student performance.
+
+
+
+
+
+## *Anova Two Way*
+
+```{r}
+
+two.way.inter <- aov(data$Grade ~ data$sex * data$Fedu, data = data)
+
+summary(two.way.inter)
+
+qf(0.05, 1, 373)
+qf(0.05, 4, 373)
+
+
+```
+
+We can conclude than that, it seems we can assume that there is no remarkable interaction of these two factors, Sex and Father Education, but individually each one might have some significance in terms of student performance.
+
+
+```{r}
+
+two.way <- aov(data$Grade ~ factor(data$Medu) + factor(data$age), data = data)
+
+summary(two.way)
+
+```
+If we can treat age as a discrete variable, this feature has nearly no effect on student performance comparing to Mother Education Level.
+
+
+### Find The Best Fit Model
+```{r}
+
+library(AICcmodavg)
+
+model.set <- list(one.way.Medu, two.way, two.way.inter)
+model.names <- c("one.way", "two.way", "interaction")
+
+aictab(model.set, modnames = model.names)
+
+
+
+```
+
+From these results, it appears that the Interaction model is the best fit. The two-way model has the nearly lowest AIC value.
+
+
+
+```{r}
+
+par(mfrow=c(2,2))
+plot(two.way.inter)
+par(mfrow=c(1,1))
+
+```
+
+
+```{r}
+
+# Fit the two-way ANOVA model with a blocking variable
+model <- lm(data$Grade ~ factor(data$Medu) + factor(data$sex) + data$age, data)
+
+# Perform the ANOVA and print the results
+anova <- anova(model)
+print(anova)
+
+
+```
+
+However, age as a blocking variable can show a vriation of performance, taking into consideration Mather Education Level and Sex.
+
+
+```{r}
+
+two.way.plot <- ggplot(data, aes(x = data$sex, y = data$Grade, group=data$Fedu)) +
+  geom_point(cex = 1.5, pch = 1.0,position = position_jitter(w = 0.1, h = 0))
+
+
+two.way.plot
+
+```
+```{r}
+
+# Load the caret package
+library(caret)
+library(ggplot2)
+library(lattice)
+
+# Split data into training and testing sets
+set.seed(123) # set seed for reproducibility
+training.index <- createDataPartition(data$Grade, p = 0.7, list = FALSE)
+training.set <- data[training.index, ]
+testing.set <- data[-training.index, ]
+
+```
+
+
+
+
+
+```{r}
+
+# Fit linear regression model on training set
+model <- lm(data$Grade ~ data$G1, data = training.set)
+
+# Evaluate model on testing set
+predictions <- predict(model, newdata = testing.set)
+RMSE <- sqrt(mean((testing.set$Grade - predictions)^2))
+#R2 <- cor(testing.set$Grade, predictions)^2
+
+
+predictions <- predict(model, testing.set)
+
+# Evaluate the model
+# View the R-squared and adjusted R-squared
+summary(model)$r.squared
+summary(model)$adj.r.squared
+
+# Test for significance of individual coefficients
+summary(model)$coefficients
+
+# Extract coefficients and p-values
+coefficients <- summary(model)$coefficients
+p.values <- coefficients[, "Pr(>|t|)"]
+
+# Perform t-test on each coefficient
+t.test_result <- t.test(coefficients[, 1], mu = 0, alternative = "two.sided")
+
+# Print results
+print(coefficients)
+print(p.values)
+print(t.test_result)
+print(summary(model)$adj.r.squared)
+
+```
+
+```{r}
+
+# Plot residuals to check for normality and homoscedasticity
+plot(model, which = 1)
+
+```
+
+
+```{r}
+
+# Load the caret package
+library(caret)
+
+# Set up the cross-validation
+control <- trainControl(method = "cv", number = 10)
+
+# Fit a linear regression model using k-fold cross-validation and compute the RMSE
+fit <- train(Grade ~ G1, data = data, method = "lm", trControl = control)
+cat("RMSE final score: ")
+mean(fit$resample$RMSE)
+
+
+# Calculate the adjusted R-squared value
+n <- nrow(data)
+p <- 1 # number of independent variables in the model
+adj_r_squared <- 1 - ((n - 1)/(n - p - 1)) * (1 - summary(fit)$r.squared)
+cat("Adjusted R-squared: ")
+adj_r_squared
+```
+
+
+```{r}
+
+# Calculate the F-statistic
+library(caret)
+
+
+# Get summary of model
+summary(fit$finalModel)
+
+# Alternatively, extract coefficients and create ANOVA table manually
+coefs <- coef(fit$finalModel)
+n <- length(data$Grade)
+k <- length(coefs) - 1
+SSR <- sum((predict(fit) - mean(mtcars$mpg))^2)
+SSE <- sum((data$Grade - predict(fit))^2)
+SST <- sum((data$Grade - mean(mtcars$mpg))^2)
+MSR <- SSR/k
+MSE <- SSE/(n - k - 1)
+F_stat <- MSR/MSE
+p_value <- 1 - pf(F_stat, k, n - k - 1)
+anova_table <- data.frame(
+  "Source" = c("Model", "Error", "Total"),
+  "DF" = c(k, n - k - 1, n - 1),
+  "SS" = c(SSR, SSE, SST),
+  "MS" = c(MSR, MSE, NA),
+  "F" = c(F_stat, NA, NA),
+  "p-value" = c(p_value, NA, NA)
+)
+row.names(anova_table) <- NULL
+cat("ANOVA test: ")
+print(anova_table)
+
+
+
+```
+
+
+
+
+```{r}
+data$G2 <- NULL
+data$G3 <- NULL
+
+
+# Specify the target variable to remove
+target_var <- "Grade"
+
+# Get all column names except for the target variable
+cols_to_keep <- names(data)[!names(data) %in% target_var]
+
+
+# Fit a multiple regression model
+multi_fit <- lm(Grade ~ ., data = training.set)
+
+# View the summary of the model
+summary(multi_fit)
+
+# Get the ANOVA table
+anova(multi_fit)
+
+
+# Evaluate the model on the test data
+preds <- predict(model, newdata = testing.set)
+
+# Calculate the adjusted R-squared value
+n <- nrow(data)
+p <- 1 # number of independent variables in the model
+adj_r_squared <- 1 - ((n - 1)/(n - p - 1)) * (1 - summary(fit)$r.squared)
+cat("\n \n Adjusted R-squared: ")
+adj_r_squared
+
+
+```
+## Visualize the results:
+
+```{r}
+
+
+plot(multi_fit$fitted.values, multi_fit$residuals)
+
+
+
+
+```
+
+
+## Visualize Coef_ :
+
+```{r}
+
+library(coefplot)
+coefplot(multi_fit)
+```
+
+
+## Summary
+
+Based on the analysis of the student performance dataset, two types of linear regression models were built: a simple linear regression and a multiple linear regression. The target variable was "Grade", which describes the overall performance of a student.
+
+The simple linear regression model used the first grade of the student as the predictor variable to predict the overall grade. The model achieved an accuracy of 71%. This suggests that the first grade is a significant predictor of the overall grade.
+
+However, the multiple linear regression model, which included all the features in the dataset except the target variable, showed that the model was mostly dependent on the first grade among others. This suggests that the other features did not add significant value in predicting the overall grade, and the model was mostly relying on the first grade to make predictions.
+
+In conclusion, while the simple linear regression model performed relatively well, the multiple linear regression model did not show significant improvement, indicating that the first grade is a crucial factor in predicting the overall grade in the student performance dataset. Further exploration of the dataset and feature engineering may be required to identify other predictors that could improve the accuracy of the model.
+
+# **Thank You**
